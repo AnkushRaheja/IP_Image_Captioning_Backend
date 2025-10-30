@@ -21,6 +21,10 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+# Model hyperparameters (kept as constants for lazy loading)
+EMBED_SIZE = 256
+HIDDEN_SIZE = 512
+
 # Model paths
 VOCAB_PATH = 'vocab.pkl'
 ENCODER_PATH = 'models/encoder-3.pkl'
@@ -245,7 +249,12 @@ if __name__ == '__main__':
     print("🚀 Image Captioning Backend Server")
     print("="*60)
     print(f"✅ Device: {device}")
-    print(f"✅ Vocabulary size: {vocab_size}")
+    # vocab may not be loaded yet due to lazy loading; show status safely
+    try:
+        vocab_size_display = len(vocab) if vocab is not None else 'not loaded'
+    except Exception:
+        vocab_size_display = 'unknown'
+    print(f"✅ Vocabulary size: {vocab_size_display}")
     print(f"✅ Embed size: {EMBED_SIZE}")
     print(f"✅ Hidden size: {HIDDEN_SIZE}")
     print(f"✅ Server running on http://localhost:5000")

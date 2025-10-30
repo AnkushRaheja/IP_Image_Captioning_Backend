@@ -7,7 +7,11 @@ import torchvision.models as models
 class EncoderCNN(nn.Module):
     def __init__(self, embed_size):
         super(EncoderCNN, self).__init__()
-        resnet = models.resnet50(pretrained=True)
+        # Do not download pretrained ImageNet weights at import time.
+        # We load a trained encoder checkpoint from `encoder-3.pkl` instead.
+        # Setting pretrained=False avoids an extra network download during startup
+        # which can cause build/runtime issues on constrained hosts like Render.
+        resnet = models.resnet50(pretrained=False)
         # disable learning for parameters
         for param in resnet.parameters():
             param.requires_grad_(False)
