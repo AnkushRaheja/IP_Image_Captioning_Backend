@@ -32,6 +32,32 @@ encoder = None
 decoder = None
 models_loaded = False
 
+def check_model_files(paths):
+    """Check that each path in `paths` exists. If any are missing, print
+    a helpful message with tips and raise FileNotFoundError.
+    """
+    missing = [p for p in paths if not os.path.exists(p)]
+    if not missing:
+        return
+
+    tip_lines = [
+        "One or more required model files are missing:",
+    ]
+    tip_lines += [f" - {p}" for p in missing]
+    tip_lines += [
+        "\nTips to resolve:",
+        " - If you keep models in the repo, ensure they've been pushed and that Git LFS files were pulled:",
+        "     git lfs install && git lfs pull",
+        " - On Render set the service Root Directory to 'backend' so these files are present at build time.",
+        " - You can also override paths with environment variables: VOCAB_PATH, ENCODER_PATH, DECODER_PATH",
+        " - If models are large or builds fail, consider hosting them in external storage (S3) and downloading at startup.",
+    ]
+
+    message = "\n".join(tip_lines)
+    # Print to stderr so Render build logs show the message
+    print(message, file=sys.stderr)
+    raise FileNotFoundError(message)
+
 def load_models():
     global vocab, encoder, decoder, models_loaded
     if models_loaded:
