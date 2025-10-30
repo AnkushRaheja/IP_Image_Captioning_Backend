@@ -15,8 +15,24 @@ from vocabulary import Vocabulary
 
 app = Flask(__name__)
 
-# Configure CORS to allow requests from anywhere
-CORS(app, resources={r"/*": {"origins": "*"}})
+# Configure CORS to allow requests from anywhere for now (temporary - tighten for production)
+# - origins="*" allows any origin
+# - supports_credentials=True will reflect the request Origin instead of returning '*'
+# - allow_headers and methods are explicit to satisfy preflight checks from browsers
+CORS(
+    app,
+    resources={r"/*": {"origins": "*"}},
+    supports_credentials=True,
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "X-Requested-With",
+        "Origin",
+        "Accept",
+    ],
+    expose_headers=["Content-Type"],
+    methods=["GET", "HEAD", "POST", "OPTIONS", "PUT", "DELETE"],
+)
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -165,6 +181,20 @@ def caption_image():
         JSON with success status and generated caption
     """
     try:
+        # --- Diagnostic logging: print request metadata to server logs ---
+        try:
+            print("--- Incoming /caption request ---")
+            # headers can contain non-serializable values; convert to dict
+            print("Headers:", dict(request.headers))
+        except Exception as _e:
+            print("Failed to print headers:", _e)
+        try:
+            print("Content-Type:", request.content_type)
+            print("Form keys:", list(request.form.keys()))
+            print("Files keys:", list(request.files.keys()))
+        except Exception as _e:
+            print("Failed to print multipart/form keys:", _e)
+
         # Check if image is in request
         if 'image' not in request.files:
             return jsonify({
@@ -195,10 +225,32 @@ def caption_image():
         })
     
     except Exception as e:
+        # Log full exception for diagnostics
         print(f"Error processing image: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'success': False,
             'error': f'Error processing image: {str(e)}'
+        }), 500
+
+
+@app.route('/load', methods=['GET', 'POST'])
+def load_models_endpoint():
+    """Optional endpoint to pre-load models (useful for pre-warming)."""
+    try:
+        load_models()
+        return jsonify({
+            'success': True,
+            'models_loaded': models_loaded
+        })
+    except Exception as e:
+        print(f"Error pre-loading models: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
         }), 500
 
 @app.route('/health', methods=['GET'])
