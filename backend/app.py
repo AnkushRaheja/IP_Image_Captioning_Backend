@@ -26,61 +26,37 @@ VOCAB_PATH = 'vocab.pkl'
 ENCODER_PATH = 'models/encoder-3.pkl'
 DECODER_PATH = 'models/decoder-3.pkl'
 
+# Global variables for models
+vocab = None
+encoder = None
+decoder = None
+models_loaded = False
 
-def check_model_files(paths):
-    """Check that each path in `paths` exists. If any are missing, print
-    a helpful message with tips and raise FileNotFoundError.
-    """
-    missing = [p for p in paths if not os.path.exists(p)]
-    if not missing:
+def load_models():
+    global vocab, encoder, decoder, models_loaded
+    if models_loaded:
         return
-
-    tip_lines = [
-        "One or more required model files are missing:",
-    ]
-    tip_lines += [f" - {p}" for p in missing]
-    tip_lines += [
-        "\nTips to resolve:",
-        " - If you keep models in the repo, ensure they've been pushed and that Git LFS files were pulled:",
-        "     git lfs install && git lfs pull",
-        " - On Render set the service Root Directory to 'backend' so these files are present at build time.",
-        " - You can also override paths with environment variables: VOCAB_PATH, ENCODER_PATH, DECODER_PATH",
-        " - If models are large or builds fail, consider hosting them in external storage (S3) and downloading at startup.",
-    ]
-
-    message = "\n".join(tip_lines)
-    # Print to stderr so Render build logs show the message
-    print(message, file=sys.stderr)
-    raise FileNotFoundError(message)
+    
+    print("Loading vocabulary from vocab.pkl...")
+    with open(VOCAB_PATH, 'rb') as f:
+        vocab = pickle.load(f)
+    
+    print("Initializing models on device: cpu")
+    encoder = EncoderCNN(EMBED_SIZE).to(device)
+    decoder = DecoderRNN(EMBED_SIZE, HIDDEN_SIZE, len(vocab)).to(device)
+    
+    print("Loading trained weights...")
+    encoder.load_state_dict(torch.load(ENCODER_PATH, map_location=device))
+    decoder.load_state_dict(torch.load(DECODER_PATH, map_location=device))
+    
+    encoder.eval()
+    decoder.eval()
+    
+    models_loaded = True
+    print("✅ Models loaded successfully!")
 
 # Check for required model files and provide clearer, actionable errors if they are missing
 check_model_files([VOCAB_PATH, ENCODER_PATH, DECODER_PATH])
-
-# Load vocabulary
-print(f"Loading vocabulary from {VOCAB_PATH}...")
-with open(VOCAB_PATH, 'rb') as f:
-    vocab = pickle.load(f)
-
-# Model hyperparameters
-EMBED_SIZE = 256
-HIDDEN_SIZE = 512
-vocab_size = len(vocab)
-
-# Initialize models
-print(f"Initializing models on device: {device}")
-encoder = EncoderCNN(EMBED_SIZE).to(device)
-decoder = DecoderRNN(EMBED_SIZE, HIDDEN_SIZE, vocab_size).to(device)
-
-# Load trained weights
-print("Loading trained weights...")
-encoder.load_state_dict(torch.load(ENCODER_PATH, map_location=device))
-decoder.load_state_dict(torch.load(DECODER_PATH, map_location=device))
-
-# Set to evaluation mode
-encoder.eval()
-decoder.eval()
-
-print("✅ Models loaded successfully!")
 
 # Image preprocessing pipeline
 transform = transforms.Compose([
@@ -100,6 +76,8 @@ def generate_caption(image, max_length=20):
     Returns:
         str: Generated caption
     """
+    load_models()  # Load models if not already loaded
+    
     with torch.no_grad():
         # Preprocess image
         image_tensor = transform(image).unsqueeze(0).to(device)
@@ -198,21 +176,23 @@ def health_check():
     """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
-        'model': 'loaded',
+        'model': 'ready to load',
         'device': str(device),
-        'vocabulary_size': vocab_size
+        'models_loaded': models_loaded
     })
 
 @app.route('/info', methods=['GET'])
 def model_info():
     """Get model information"""
+    if not models_loaded:
+        load_models()
     return jsonify({
         'architecture': {
             'encoder': 'ResNet-50 (pre-trained on ImageNet)',
             'decoder': 'LSTM',
             'embed_size': EMBED_SIZE,
             'hidden_size': HIDDEN_SIZE,
-            'vocabulary_size': vocab_size
+            'vocabulary_size': len(vocab)
         },
         'device': str(device),
         'status': 'ready'
